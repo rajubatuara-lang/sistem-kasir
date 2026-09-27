@@ -9,7 +9,9 @@ import Modal from '@/components/Modal';
 
 interface ProdukProps {
   products: Product[];
-  setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
+  onAdd: (product: Omit<Product, 'id'>) => Promise<{ success: boolean; product?: Product; error?: string }>;
+  onEdit: (id: string, product: Partial<Product>) => Promise<{ success: boolean; product?: Product; error?: string }>;
+  onDelete: (id: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const emptyForm = {
@@ -22,7 +24,7 @@ const emptyForm = {
   status: 'active' as ProductStatus,
 };
 
-export default function Produk({ products, setProducts }: ProdukProps) {
+export default function Produk({ products, onAdd, onEdit, onDelete }: ProdukProps) {
   const { push } = useToast();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('Semua');
@@ -30,6 +32,7 @@ export default function Produk({ products, setProducts }: ProdukProps) {
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const filtered = useMemo(() => {
     return products.filter((p) => {
@@ -62,37 +65,72 @@ export default function Produk({ products, setProducts }: ProdukProps) {
     setModalOpen(true);
   };
 
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim() || !form.code.trim()) {
       push('Nama dan kode produk wajib diisi', 'error');
       return;
     }
+    
+    setSaving(true);
+    
     const priceNum = parseInt(form.price, 10) || 0;
     const costNum = parseInt(form.cost, 10) || 0;
     const stockNum = parseInt(form.stock, 10) || 0;
 
-    if (editing) {
-      setProducts((ps) => ps.map((p) => (p.id === editing.id ? { ...p, ...form, price: priceNum, cost: costNum, stock: stockNum } : p)));
-      push(`Produk "${form.name}" berhasil diperbarui`, 'success');
-    } else {
-      const newP: Product = {
-        id: `p-${Date.now()}`,
-        ...form,
-        price: priceNum,
-        cost: costNum,
-        stock: stockNum,
-      };
-      setProducts((ps) => [newP, ...ps]);
-      push(`Produk "${form.name}" berhasil ditambahkan`, 'success');
+    try {
+      if (editing) {
+        const result = await onEdit(editing.id, {
+          code: form.code,
+          name: form.name,
+          category: form.category,
+          price: priceNum,
+          cost: costNum,
+          stock: stockNum,
+          status: form.status,
+        });
+        
+        if (result.success) {
+          push(`Produk "${form.name}" berhasil diperbarui`, 'success');
+          setModalOpen(false);
+        } else {
+          push(result.error || 'Gagal memperbarui produk', 'error');
+        }
+      } else {
+        const result = await onAdd({
+          code: form.code,
+          name: form.name,
+          category: form.category,
+          price: priceNum,
+          cost: costNum,
+          stock: stockNum,
+          status: form.status,
+        });
+        
+        if (result.success) {
+          push(`Produk "${form.name}" berhasil ditambahkan`, 'success');
+          setModalOpen(false);
+        } else {
+          push(result.error || 'Gagal menambahkan produk', 'error');
+        }
+      }
+    } catch (error: any) {
+      push(error.message || 'Terjadi kesalahan', 'error');
+    } finally {
+      setSaving(false);
     }
-    setModalOpen(false);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return;
-    setProducts((ps) => ps.filter((p) => p.id !== deleteTarget.id));
-    push(`Produk "${deleteTarget.name}" dihapus`, 'info');
-    setDeleteTarget(null);
+    
+    const result = await onDelete(deleteTarget.id);
+    
+    if (result.success) {
+      push(`Produk "${deleteTarget.name}" dihapus`, 'info');
+      setDeleteTarget(null);
+    } else {
+      push(result.error || 'Gagal menghapus produk', 'error');
+    }
   };
 
   return (
@@ -196,8 +234,12 @@ export default function Produk({ products, setProducts }: ProdukProps) {
         title={editing ? 'Edit Produk' : 'Tambah Produk'}
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setModalOpen(false)}>Batal</button>
-            <button className="btn-primary" onClick={save}>{editing ? 'Simpan Perubahan' : 'Tambah Produk'}</button>
+            <button className="btn-secondary" onClick={() => setModalOpen(false)} disabled={saving}>
+              Batal
+            </button>
+            <button className="btn-primary" onClick={save} disabled={saving}>
+              {saving ? 'Menyimpan...' : editing ? 'Simpan Perubahan' : 'Tambah Produk'}
+            </button>
           </>
         }
       >

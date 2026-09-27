@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import { ToastProvider } from '@/components/ToastProvider';
 import Dashboard from '@/pages/Dashboard';
 import Kasir from '@/pages/Kasir';
@@ -8,8 +9,9 @@ import Produk from '@/pages/Produk';
 import Transaksi from '@/pages/Transaksi';
 import Laporan from '@/pages/Laporan';
 import Pengaturan from '@/pages/Pengaturan';
-import { products as seedProducts, transactions as seedTransactions } from '@/data';
-import type { Page, Product, Transaction } from '@/types';
+import { useProducts } from '@/hooks/useProducts';
+import { useTransactions } from '@/hooks/useTransactions';
+import type { Page, Transaction } from '@/types';
 
 const PAGE_META: Record<Page, { title: string; subtitle: string }> = {
   dashboard: { title: 'Dashboard', subtitle: 'Ringkasan aktivitas toko Anda hari ini' },
@@ -25,19 +27,36 @@ function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const [products, setProducts] = useState<Product[]>(seedProducts);
-  const [transactions, setTransactions] = useState<Transaction[]>(seedTransactions);
+  // Use Supabase hooks
+  const {
+    products,
+    loading: productsLoading,
+    addProduct,
+    editProduct,
+    removeProduct,
+  } = useProducts();
+  
+  const {
+    transactions,
+    loading: transactionsLoading,
+    addTransaction,
+  } = useTransactions();
 
-  const handleCheckout = (tx: Transaction) => {
-    setTransactions((prev) => [tx, ...prev]);
-    // Reduce stock
-    setProducts((prev) =>
-      prev.map((p) => {
-        const item = tx.items.find((it) => it.name === p.name);
-        if (!item) return p;
-        return { ...p, stock: Math.max(p.stock - item.qty, 0) };
-      }),
-    );
+  const handleCheckout = async (tx: Transaction) => {
+    // Save transaction to Supabase
+    const result = await addTransaction(tx);
+    
+    if (result.success) {
+      // Update stock for each item in the transaction
+      for (const item of tx.items) {
+        const product = products.find((p) => p.name === item.name);
+        if (product) {
+          await editProduct(product.id, {
+            stock: Math.max(product.stock - item.qty, 0),
+          });
+        }
+      }
+    }
   };
 
   const meta = PAGE_META[page];
@@ -63,9 +82,36 @@ function App() {
 
           <main className="flex-1 overflow-y-auto p-4 md:p-6">
             {page === 'dashboard' && <Dashboard onNavigate={setPage} />}
-            {page === 'kasir' && <Kasir products={products} onCheckout={handleCheckout} />}
-            {page === 'produk' && <Produk products={products} setProducts={setProducts} />}
-            {page === 'transaksi' && <Transaksi transactions={transactions} />}
+            
+            {page === 'kasir' && (
+              productsLoading ? (
+                <LoadingSpinner message="Memuat produk..." />
+              ) : (
+                <Kasir products={products} onCheckout={handleCheckout} />
+              )
+            )}
+            
+            {page === 'produk' && (
+              productsLoading ? (
+                <LoadingSpinner message="Memuat produk..." />
+              ) : (
+                <Produk
+                  products={products}
+                  onAdd={addProduct}
+                  onEdit={editProduct}
+                  onDelete={removeProduct}
+                />
+              )
+            )}
+            
+            {page === 'transaksi' && (
+              transactionsLoading ? (
+                <LoadingSpinner message="Memuat transaksi..." />
+              ) : (
+                <Transaksi transactions={transactions} />
+              )
+            )}
+            
             {page === 'laporan' && <Laporan />}
             {page === 'pengaturan' && <Pengaturan />}
           </main>

@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import { Store, User, CreditCard, Settings as SettingsIcon, Save, Upload } from 'lucide-react';
+import { Store, User, CreditCard, Settings as SettingsIcon, Save, Upload, Database, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ToastProvider';
+import { testConnectionWithFeedback } from '@/lib/supabase-test';
 
-type Tab = 'toko' | 'kasir' | 'pembayaran' | 'umum';
+type Tab = 'toko' | 'kasir' | 'pembayaran' | 'umum' | 'database';
 
 export default function Pengaturan() {
   const { push } = useToast();
   const [tab, setTab] = useState<Tab>('toko');
+  const [dbTestLoading, setDbTestLoading] = useState(false);
+  const [dbTestResult, setDbTestResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
 
   const [store, setStore] = useState({
     name: 'Toko Berkah Jaya',
@@ -44,11 +47,36 @@ export default function Pengaturan() {
     push(`Pengaturan ${which} berhasil disimpan`, 'success');
   };
 
+  const testDatabaseConnection = async () => {
+    setDbTestLoading(true);
+    setDbTestResult(null);
+    
+    try {
+      const result = await testConnectionWithFeedback();
+      setDbTestResult(result);
+      
+      if (result.success) {
+        push('Koneksi Supabase berhasil!', 'success');
+      } else {
+        push('Koneksi Supabase gagal', 'error');
+      }
+    } catch (error: any) {
+      setDbTestResult({
+        success: false,
+        message: `Error: ${error.message}`,
+      });
+      push('Gagal test koneksi', 'error');
+    } finally {
+      setDbTestLoading(false);
+    }
+  };
+
   const tabs: { id: Tab; label: string; icon: typeof Store }[] = [
     { id: 'toko', label: 'Profil Toko', icon: Store },
     { id: 'kasir', label: 'Informasi Kasir', icon: User },
     { id: 'pembayaran', label: 'Pengaturan Pembayaran', icon: CreditCard },
     { id: 'umum', label: 'Pengaturan Umum', icon: SettingsIcon },
+    { id: 'database', label: 'Database Supabase', icon: Database },
   ];
 
   return (
@@ -254,6 +282,142 @@ export default function Pengaturan() {
             </label>
             <div className="flex justify-end">
               <button onClick={() => saveTab('umum')} className="btn-primary"><Save className="h-4 w-4" /> Simpan Perubahan</button>
+            </div>
+          </div>
+        )}
+
+        {tab === 'database' && (
+          <div className="max-w-2xl space-y-5">
+            <div>
+              <h3 className="text-base font-semibold text-slate-800">Database Supabase</h3>
+              <p className="text-sm text-slate-400">Cek koneksi dan status database</p>
+            </div>
+
+            {/* Environment Variables Info */}
+            <div className="rounded-xl border border-slate-200 p-4">
+              <h4 className="mb-3 text-sm font-semibold text-slate-700">Environment Variables</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">VITE_SUPABASE_URL</span>
+                  <span className={import.meta.env.VITE_SUPABASE_URL ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                    {import.meta.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ Missing'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">VITE_SUPABASE_ANON_KEY</span>
+                  <span className={import.meta.env.VITE_SUPABASE_ANON_KEY ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                    {import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing'}
+                  </span>
+                </div>
+              </div>
+              {import.meta.env.VITE_SUPABASE_URL && (
+                <div className="mt-3 pt-3 border-t border-slate-200">
+                  <span className="text-xs text-slate-400">URL: </span>
+                  <span className="text-xs text-slate-600 font-mono">{import.meta.env.VITE_SUPABASE_URL}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Test Connection Button */}
+            <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+              <Database className="mx-auto h-12 w-12 text-slate-400 mb-3" />
+              <p className="text-sm font-medium text-slate-700 mb-2">Test Koneksi Database</p>
+              <p className="text-xs text-slate-500 mb-4">Klik tombol di bawah untuk mengecek koneksi ke Supabase</p>
+              <button
+                onClick={testDatabaseConnection}
+                disabled={dbTestLoading}
+                className="btn-primary inline-flex items-center gap-2"
+              >
+                {dbTestLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Testing...
+                  </>
+                ) : (
+                  <>
+                    <Database className="h-4 w-4" />
+                    Test Koneksi
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Test Result */}
+            {dbTestResult && (
+              <div className={[
+                'rounded-xl border-2 p-5',
+                dbTestResult.success 
+                  ? 'border-green-200 bg-green-50' 
+                  : 'border-red-200 bg-red-50'
+              ].join(' ')}>
+                <div className="flex items-start gap-3">
+                  {dbTestResult.success ? (
+                    <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <XCircle className="h-6 w-6 text-red-600 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <h4 className={[
+                      'text-sm font-semibold mb-1',
+                      dbTestResult.success ? 'text-green-800' : 'text-red-800'
+                    ].join(' ')}>
+                      {dbTestResult.success ? 'Koneksi Berhasil!' : 'Koneksi Gagal'}
+                    </h4>
+                    <p className={[
+                      'text-sm',
+                      dbTestResult.success ? 'text-green-700' : 'text-red-700'
+                    ].join(' ')}>
+                      {dbTestResult.message}
+                    </p>
+                    
+                    {dbTestResult.success && dbTestResult.details && (
+                      <div className="mt-3 pt-3 border-t border-green-200">
+                        <p className="text-xs font-medium text-green-800 mb-2">Database Statistics:</p>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="bg-white rounded-lg p-2.5 text-center">
+                            <div className="text-lg font-bold text-green-700">{dbTestResult.details.products}</div>
+                            <div className="text-xs text-green-600">Products</div>
+                          </div>
+                          <div className="bg-white rounded-lg p-2.5 text-center">
+                            <div className="text-lg font-bold text-green-700">{dbTestResult.details.transactions}</div>
+                            <div className="text-xs text-green-600">Transactions</div>
+                          </div>
+                          <div className="bg-white rounded-lg p-2.5 text-center">
+                            <div className="text-lg font-bold text-green-700">{dbTestResult.details.categories}</div>
+                            <div className="text-xs text-green-600">Categories</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {!dbTestResult.success && (
+                      <div className="mt-3 pt-3 border-t border-red-200">
+                        <p className="text-xs font-medium text-red-800 mb-1">Troubleshooting:</p>
+                        <ul className="text-xs text-red-700 space-y-1 list-disc list-inside">
+                          <li>Pastikan file .env.local berisi URL dan Anon Key yang benar</li>
+                          <li>Cek apakah tabel sudah dibuat di Supabase (jalankan supabase-schema.sql)</li>
+                          <li>Pastikan RLS policies sudah di-setup dengan benar</li>
+                          <li>Restart dev server setelah mengubah .env.local</li>
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Quick Links */}
+            <div className="rounded-xl bg-blue-50 border border-blue-200 p-4">
+              <h4 className="text-sm font-semibold text-blue-800 mb-2">📚 Panduan Setup</h4>
+              <p className="text-xs text-blue-700 mb-3">
+                Lihat file <code className="bg-blue-100 px-1.5 py-0.5 rounded text-xs font-mono">SUPABASE_SETUP.md</code> untuk panduan lengkap setup Supabase.
+              </p>
+              <div className="space-y-2 text-xs text-blue-700">
+                <div>1. Isi credentials di file <code className="bg-blue-100 px-1 py-0.5 rounded font-mono">.env.local</code></div>
+                <div>2. Jalankan SQL schema di Supabase Dashboard</div>
+                <div>3. (Opsional) Jalankan seed data</div>
+                <div>4. Test koneksi di halaman ini</div>
+              </div>
             </div>
           </div>
         )}
